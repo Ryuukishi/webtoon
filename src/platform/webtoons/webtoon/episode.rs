@@ -1668,12 +1668,11 @@ impl DownloadedPanels {
             "`webtoons.com` episodes cannot have 0 panels; there must be at least one! This invariant should have been caught when getting the panels in the first place!",
         )?;
 
-        let ext = &first.ext;
         let episode = first.episode;
         let width = self.width;
         let height = self.height;
 
-        let path = path.join(episode.to_string()).with_extension(ext);
+        let path = path.join(episode.to_string()).with_extension("png");
 
         tokio::fs::File::create(&path).await?;
 
