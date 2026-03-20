@@ -1509,14 +1509,9 @@ fn panels(html: &Html, episode: u16) -> Result<Vec<Panel>, Assumption> {
         url.set_host(Some("swebtoon-phinf.pstatic.net"))
             .assumption("`swebtoon-phinf.pstatic.net` should be a valid host")?;
 
-        // --- PRINT BEFORE ---
-        println!("[DEBUG] URL Before: {}", url);
 
         // Remove the query parameters
         url.set_query(None);
-
-        // --- PRINT AFTER ---
-        println!("[DEBUG] URL After:  {}", url);
 
         let ext = match url.path().split('.').next_back() {
             Some(ext) => ext.to_string(),
