@@ -871,8 +871,9 @@ impl Episode {
 
         let mut panels = self.panels().await?;
 
-        // STRICTLY 1 PANEL AT A TIME
-        let semaphore = Semaphore::new(1);
+        // TODO: Can get rid of this? Think this is the only `sync` dep from tokio being used.
+        // PERF: Download N panels at a time. Without this it will be a sequential.
+        let semaphore = Semaphore::new(100);
 
         let mut height = 0;
         let mut width = 0;
@@ -888,6 +889,9 @@ impl Episode {
             drop(semaphore);
 
             height += panel.height;
+            // NOTE: Not all panels are guaranteed to be the same width. When it
+            // comes to making building up a single image later on, this is needed
+            // to get the max width of all panels and then just fit to that.
             width = width.max(panel.width);
         }
 
@@ -1470,58 +1474,7 @@ impl Panel {
         &mut self,
         client: &crate::platform::webtoons::Client,
     ) -> Result<(), RequestError> {
-        // 1. Download the raw bytes from Webtoon
         self.bytes = client.download_panel(&self.url).await?;
-
-        // --- NEW: INJECT JPEG2PNG ---
-        if self.ext.eq_ignore_ascii_case("jpg") || self.ext.eq_ignore_ascii_case("jpeg") {
-            use tokio::io::AsyncWriteExt;
-            use tokio::process::Command;
-            use std::env::temp_dir;
-
-            // Create unique temporary file paths in your OS temp folder
-            let temp_in = temp_dir().join(format!("webtoon_{}_{}.jpg", self.episode, self.number));
-            let temp_out = temp_dir().join(format!("webtoon_{}_{}.png", self.episode, self.number));
-
-            // Write the raw downloaded JPEG bytes to the temporary input file
-            if let Ok(mut file) = tokio::fs::File::create(&temp_in).await {
-                if file.write_all(&self.bytes).await.is_ok() {
-                    
-                    // Run the jpeg2png binary
-                    let status = Command::new("jpeg2png")
-                        .arg(&temp_in)
-                        .arg("--output")
-                        .arg(&temp_out)
-                        .arg("--quiet")
-                        // EXPLICITLY USE 16 THREADS
-                        .arg("--threads")
-                        .arg("16")
-                        .arg("--16-bits-png")
-                        .arg("--iterations")
-                        .arg("150")
-                        .status()
-                        .await;
-
-                    // If successful, read the new PNG bytes back into memory
-                    if let Ok(exit_status) = status {
-                        if exit_status.success() {
-                            if let Ok(new_bytes) = tokio::fs::read(&temp_out).await {
-                                self.bytes = new_bytes;
-                                self.ext = "png".to_string();
-                            }
-                        } else {
-                            println!("Warning: jpeg2png failed on ep {} panel {}", self.episode, self.number);
-                        }
-                    }
-                }
-            }
-
-            // Clean up temporary files
-            let _ = tokio::fs::remove_file(&temp_in).await;
-            let _ = tokio::fs::remove_file(&temp_out).await;
-        }
-        // -----------------------------
-
         Ok(())
     }
 }
